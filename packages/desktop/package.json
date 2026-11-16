@@ -56,7 +56,8 @@
       "allowElevation": true,
       "createDesktopShortcut": true,
       "runAfterFinish": true,
-      "include": "build/installer.nsh"
+      "include": "build/installer.nsh",
+      "artifactName": "PrintHub-Setup-${version}.exe"
     },
     "npmRebuild": false,
     "publish": null,
