@@ -9,3 +9,4 @@ export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 export const MAX_FILES_PER_JOB = 20;
 export const MAX_PAGES = 1000;
 export const ACCEPTED_MIME = ['application/pdf', 'image/jpeg', 'image/png'] as const;
+export * from './imageInfo.ts';

@@ -1,4 +1,4 @@
-import type { PageSize } from '@printhub/shared';
+import type { PageSize } from './types.ts';
 
 export interface ImageInfo extends PageSize {
   /** Clockwise rotation from EXIF orientation, so photos print the way phones show them. */

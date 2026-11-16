@@ -1,7 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { PDFDocument, degrees, type PDFEmbeddedPage, type PDFImage, type PDFPage } from 'pdf-lib';
-import { MAX_PAGES, cellMargin, layoutSheets, parsePageRange, type DocumentKind, type PageSize, type PrintOptions } from '@printhub/shared';
-import { readImageInfo } from './imageInfo.ts';
+import { MAX_PAGES, cellMargin, readImageInfo, layoutSheets, parsePageRange, type DocumentKind, type PageSize, type PrintOptions } from '@printhub/shared';
 
 
 export interface InspectResult {
