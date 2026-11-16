@@ -14,7 +14,7 @@
   "dependencies": {},
   "devDependencies": {
     "@printhub/server": "0.1.0",
-    "electron": "^39.0.0",
+    "electron": "39.8.10",
     "electron-builder": "^26.0.0",
     "esbuild": "^0.25.0"
   },
@@ -59,7 +59,8 @@
       "include": "build/installer.nsh"
     },
     "npmRebuild": false,
-    "publish": null
+    "publish": null,
+    "electronVersion": "39.8.10"
   },
   "author": "PrintHub"
 }
