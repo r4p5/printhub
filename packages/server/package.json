@@ -1,0 +1,21 @@
+{
+  "name": "@printhub/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/app.ts",
+  "exports": { ".": "./src/app.ts" },
+  "scripts": {
+    "dev": "PRINTHUB_DATA=../../.data PRINTHUB_DRIVER=mock node --watch src/main.ts",
+    "start": "node src/main.ts",
+    "build": "node scripts/bundle.mjs"
+  },
+  "dependencies": {
+    "@printhub/shared": "0.1.0",
+    "busboy": "^1.6.0",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@types/busboy": "^1.5.4"
+  }
+}

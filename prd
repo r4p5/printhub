@@ -1,0 +1,806 @@
+# PrintHub — Product Requirements Document (PRD) 
+
+**Version:** 2.0 
+**Product:** PrintHub 
+**Platform:** Web + Windows Desktop 
+**Architecture:** Locally hosted, independent shop installations 
+**Hosting:** GitHub Pages for the customer frontend 
+**Backend:** Local Node.js server running on the shopkeeper's computer 
+
+--- 
+
+## 1. Product Overview 
+
+PrintHub is a self-service document printing platform that allows customers to scan a QR code at a printing shop, upload documents using their phones, configure basic print preferences, preview the output, pay through a UPI application, and send the print job directly to the shopkeeper's local printing system. 
+
+Each shop installs a single Windows application that runs continuously in the background. 
+
+The application: 
+- Hosts a local API server. 
+- Discovers and manages connected printers. 
+- Receives customer documents. 
+- Processes print configurations. 
+- Manages print queues. 
+- Sends documents to Windows printers. 
+- Maintains shop configuration and job history locally. 
+
+There is no central cloud backend. Each shop operates independently. 
+
+## 2. Product Goals 
+
+1. Eliminate the need for customers to transfer documents manually to shopkeepers. 
+2. Allow customers to submit print jobs using their own mobile phones. 
+3. Automate document processing and printing. 
+4. Support multiple printers within a shop. 
+5. Support multiple independent shops using one shared customer frontend. 
+6. Minimize hosting and infrastructure costs. 
+7. Keep shop data and customer documents on the shopkeeper's computer. 
+
+## 3. System Architecture 
+
+### 3.1 High-level architecture 
+
+**Customer frontend** 
+- React 
+- Vite 
+- TypeScript 
+- Tailwind CSS 
+- PDF.js 
+- Hosted on GitHub Pages. 
+
+**Shopkeeper desktop application** 
+- Electron 
+- React 
+- TypeScript 
+- Node.js 
+- electron-builder for Windows installer. 
+
+**Local backend** 
+- Node.js 
+- Express 
+- REST APIs 
+- SQLite 
+- WebSocket or HTTP polling for local job updates. 
+
+**Printing** 
+- Windows Print Spooler 
+- Installed Windows printer drivers 
+- PDF processing library 
+- PowerShell or Windows APIs for printer discovery and configuration. 
+
+### 3.2 Architecture diagram 
+
+```text 
+ GITHUB PAGES 
+ Customer Web Frontend 
+ | 
+ Shop-specific URL 
+ | 
+ Customer scans QR 
+ | 
+ Uploads documents 
+ | 
+ Local Shop API 
+ | 
+ Shopkeeper Windows Computer 
+ | 
+ Node.js Backend 
+ | 
+ SQLite DB 
+ | 
+ Document Processing 
+ | 
+ Print Job Queue 
+ | 
+ Windows Print Spooler 
+ | 
+ Printers 
+``` 
+
+Each shop has its own Windows installation, local database, files, printer configuration and API server. 
+
+There is no shared cloud database or central job queue. 
+
+### 3.3 Important network requirement 
+
+The customer frontend is hosted on GitHub Pages, but the printing API runs on the shopkeeper's computer. 
+
+A customer's browser cannot access the shopkeeper's `localhost` directly. 
+
+For the initial release, the intended operating mode is: 
+
+- Customer and shopkeeper computer are connected to the same Wi-Fi/LAN. 
+- The desktop application exposes its API on the shopkeeper computer's local network address. 
+- The customer frontend connects to that local API. 
+- The shopkeeper's firewall permits the required local network traffic. 
+
+For customers using mobile data or a different network, an additional networking solution or publicly reachable endpoint would be required. That is outside the zero-infrastructure MVP. 
+
+The application must display the local connection address and provide a connectivity test during setup. 
+
+## 4. Shop Registration and Identification 
+
+### 4.1 Initial registration 
+
+Keep registration minimal. 
+
+Only collect: 
+
+| Field | Required | 
+|---|---| 
+| Shop name | Yes | 
+| Shopkeeper mobile number | Yes | 
+
+Do not collect: 
+- Shop address 
+- Owner's full name 
+- Email address 
+- Business registration information 
+- Unnecessary profile information 
+
+Other operational settings, such as UPI ID, printer configuration and pricing, belong in their respective configuration screens. 
+
+### 4.2 Unique shop URL 
+
+Use the shopkeeper's mobile number as the public shop identifier. 
+
+Examples: 
+
+```text 
+https://r4p5.github.io/9066191970 
+https://r4p5.github.io/9876543210 
+``` 
+
+The same customer frontend handles every shop. 
+
+The application reads the mobile number from the URL and uses it to identify the intended shop. 
+
+**Important implementation detail:** GitHub Pages does not dynamically create routes when a shop registers. Implement a React single-page application with a `404.html` fallback that preserves the requested path, or use an equivalent static-routing strategy. 
+
+### 4.3 Local configuration 
+
+Each installation maintains its own configuration: 
+
+```json 
+{ 
+ "shop": { 
+ "shopName": "Sri Sai Xerox", 
+ "mobileNumber": "9066191970" 
+ }, 
+ "payment": { 
+ "upiId": "example@upi" 
+ }, 
+ "printers": [], 
+ "pricing": {}, 
+ "settings": {} 
+} 
+``` 
+
+The phone number must be validated and unique within the installation. The local configuration is persistent across application restarts. 
+
+Because there is no central registry, global uniqueness across different computers cannot be guaranteed. The MVP assumes one active installation per shopkeeper mobile number. 
+
+## 5. Shopkeeper Windows Application 
+
+### 5.1 Application behavior 
+
+The shopkeeper installs PrintHub using a Windows installer. 
+
+After installation: 
+- The application launches automatically when Windows starts. 
+- The local backend runs in the background. 
+- The application remains accessible through its desktop interface. 
+- A system tray icon shows application status. 
+- The local API continues running while the application is minimized. 
+- The application can be stopped or restarted from its interface. 
+
+The MVP should not require the shopkeeper to use a terminal. 
+
+### 5.2 Setup wizard 
+
+**Step 1 — Shop registration** 
+- Shop name. 
+- Mobile number. 
+- Validate required fields. 
+
+**Step 2 — Printer discovery** 
+- Discover installed Windows printers. 
+- Display printer names and status. 
+- Allow the shopkeeper to enable or disable printers. 
+- Assign printer roles. 
+- Run a test print. 
+
+**Step 3 — Pricing** 
+- Black-and-white price per printed side. 
+- Color price per printed side. 
+- Duplex pricing rules. 
+- Minimum order amount. 
+- Maximum copy count. 
+
+**Step 4 — Payment configuration** 
+- UPI ID. 
+- Merchant display name. 
+- Optional static UPI QR image. 
+- Payment instructions. 
+
+**Step 5 — QR generation** 
+- Generate the shop-specific URL. 
+- Generate a downloadable QR code. 
+- Allow the shopkeeper to print and display it. 
+
+**Step 6 — Activation** 
+- Verify printer availability. 
+- Verify configuration. 
+- Verify local API connectivity. 
+- Activate customer submissions. 
+
+## 6. Shopkeeper Dashboard 
+
+The application should have four primary sections. 
+
+### 6.1 Overview 
+
+Display: 
+- Local server status. 
+- Shop status. 
+- Connected printer status. 
+- Active print jobs. 
+- Waiting jobs. 
+- Completed jobs. 
+- Failed jobs. 
+- Today's order count. 
+- Today's revenue based on recorded payments. 
+
+### 6.2 Printers and Routing 
+
+Features: 
+- Discover installed printers. 
+- Refresh printer list. 
+- Enable or disable printers. 
+- Assign black-and-white or color roles. 
+- Configure primary and backup printers. 
+- Detect duplex support. 
+- Inspect supported paper sizes. 
+- Display printer errors. 
+- Configure routing rules. 
+- Run test prints. 
+
+The application must use the actual installed printer driver capabilities rather than assume all printers support the same features. 
+
+### 6.3 Pricing and Payments 
+
+Shopkeeper controls: 
+- B&W price per printed side. 
+- Color price per printed side. 
+- Duplex pricing. 
+- Minimum order amount. 
+- Maximum copies. 
+- UPI ID. 
+- Merchant display name. 
+- Payment instructions. 
+
+Pricing changes should not modify existing orders. 
+
+### 6.4 Shop and QR Settings 
+
+Display: 
+- Shop name. 
+- Registered mobile number. 
+- Shop-specific customer URL. 
+- QR code preview. 
+- Download QR code. 
+- Open/close shop. 
+- Local API status. 
+- Application version. 
+- Local storage information. 
+
+## 7. Customer Web Application 
+
+### 7.1 Customer entry 
+
+The customer scans the shop's QR code. 
+
+Example: 
+
+```text 
+https://r4p5.github.io/9066191970 
+``` 
+
+The frontend: 
+1. Reads the mobile number from the URL. 
+2. Identifies the intended shop. 
+3. Connects to that shop's local API. 
+4. Fetches shop name, availability, pricing and supported print options. 
+5. Displays the customer printing interface. 
+
+If the local API cannot be reached, show a clear message explaining that the customer must connect to the shop's Wi-Fi. 
+
+### 7.2 Document upload 
+
+Support multiple files in one order. 
+
+MVP supported formats: 
+- PDF 
+- JPG 
+- JPEG 
+- PNG 
+
+Features: 
+- Upload multiple documents. 
+- Remove individual documents. 
+- Reorder documents. 
+- Display upload progress. 
+- Show file names. 
+- Display page counts. 
+- Validate file formats. 
+- Validate file sizes. 
+- Detect corrupted or password-protected PDFs. 
+- Retry failed uploads. 
+
+DOCX support can be considered in a later release. 
+
+### 7.3 Print configuration 
+
+Customers must not see physical printer settings. 
+
+Available customer options: 
+
+| Option | Values | 
+|---|---| 
+| Color mode | B&W / Color | 
+| Orientation | Auto / Portrait / Landscape | 
+| Sides | Single-sided / Double-sided | 
+| Duplex binding | Long edge / Short edge | 
+| Pages per sheet | 1 / 2 / 4 / 6 / 9 | 
+| Rotation | Auto / 0° / 90° / 180° / 270° | 
+| Page selection | All / Custom range | 
+| Copies | Configured maximum | 
+
+Only display options supported by the shop's configured printers. 
+
+Default configuration: 
+- B&W. 
+- Auto orientation. 
+- Single-sided. 
+- One page per sheet. 
+- One copy. 
+- All pages. 
+- Fit images inside the page without cropping. 
+
+Allow individual document configurations and an Apply to All option. 
+
+### 7.4 A4 preview 
+
+The customer must see a preview before payment. 
+
+Preview should show: 
+- Final document order. 
+- A4 page layout. 
+- Page orientation. 
+- Page rotation. 
+- N-up layout. 
+- Duplex front and back arrangement. 
+- Image placement. 
+- Selected page ranges. 
+
+Use PDF.js for PDF preview. 
+
+Images should be rendered onto A4 pages while maintaining their aspect ratio. 
+
+The preview should represent the final processed print layout as closely as possible. Physical printer margins and driver behavior can still create differences. 
+
+### 7.5 Price calculation 
+
+Calculate the order price based on: 
+- Selected logical pages. 
+- Number of copies. 
+- B&W or color. 
+- Pages per sheet. 
+- Duplex settings. 
+- Shop pricing configuration. 
+
+The shop's local API must perform the authoritative price calculation. 
+
+The customer interface must not be trusted to submit its own final price. 
+
+Display: 
+- Total pages. 
+- Copies. 
+- Print mode. 
+- Estimated physical sheets. 
+- Total price. 
+
+## 8. UPI Payment Flow 
+
+PrintHub will not integrate a payment gateway in the MVP. 
+
+### Customer flow 
+
+1. Customer reviews the print preview. 
+2. Customer sees the calculated amount. 
+3. Customer selects Pay. 
+4. Frontend opens an appropriate UPI application using a UPI intent. 
+5. Customer completes payment. 
+6. Customer returns to the printing page. 
+7. The order remains in payment-pending status. 
+
+Example: 
+
+```text 
+upi://pay?pa=example@upi 
+&pn=Sri%20Sai%20Xerox 
+&am=48.00 
+&cu=INR 
+&tn=PRINT-job_1001 
+``` 
+
+### Shopkeeper flow 
+
+1. Shopkeeper receives the customer's payment. 
+2. Shopkeeper checks the actual payment in their UPI application or bank account. 
+3. Shopkeeper confirms the payment in PrintHub. 
+4. The order becomes authorized for printing. 
+5. The local queue starts processing the job. 
+
+Never treat a payment screenshot, UPI callback, or customer-submitted UTR alone as proof of payment. 
+
+Payment verification must be a separate action from print-job completion. 
+
+## 9. Local Printing Engine 
+
+### 9.1 Printer discovery 
+
+Discover printers installed in Windows. 
+
+Possible implementation: 
+- PowerShell `Get-Printer`. 
+- Windows Print Spooler APIs. 
+- Printer configuration APIs. 
+
+Read available printer capabilities, including: 
+- Color support. 
+- Duplex support. 
+- Supported paper sizes. 
+- Printer status. 
+
+### 9.2 Printer routing 
+
+The customer never selects a physical printer. 
+
+The local backend chooses a suitable enabled printer based on: 
+- Color or B&W requirement. 
+- Duplex requirement. 
+- Paper-size requirement. 
+- Printer availability. 
+- Shopkeeper routing configuration. 
+
+If no compatible printer is available, the job must remain waiting or be rejected with a clear reason. 
+
+Never silently send an incompatible job to another printer. 
+
+### 9.3 Print execution 
+
+The printing engine must: 
+1. Receive uploaded files. 
+2. Validate files. 
+3. Generate normalized print-ready PDFs. 
+4. Apply the requested layout. 
+5. Apply copy and duplex configuration. 
+6. Select a compatible printer. 
+7. Submit the document to Windows Print Spooler. 
+8. Monitor the print job. 
+9. Update customer-visible status. 
+
+Print Spooler acceptance does not guarantee that the paper physically came out. Handle uncertain and partially printed jobs carefully. 
+
+## 10. Local Job Management 
+
+Use independent queues for each physical printer. 
+
+Support: 
+- Multiple simultaneous customer submissions. 
+- Multiple printers. 
+- Per-printer queue management. 
+- Queue ordering. 
+- Job cancellation before printing. 
+- Failed job handling. 
+- Retry controls. 
+- Application restart recovery. 
+
+Suggested job states: 
+
+```text 
+uploaded 
+validating 
+awaiting_payment 
+payment_pending 
+payment_verified 
+queued 
+processing 
+printing 
+completed 
+failed 
+manual_review 
+cancelled 
+``` 
+
+Never automatically retry a job when its physical print status is uncertain. It could produce duplicate pages. 
+
+## 11. Local File Management 
+
+All customer documents remain on the shopkeeper's computer. 
+
+Suggested directory structure: 
+
+```text 
+C:\ProgramData\PrintHub\ 
+ config\ 
+ database\ 
+ printhub.db 
+ incoming\ 
+ job_1001\ 
+ job_1002\ 
+ processing\ 
+ completed\ 
+ failed\ 
+ logs\ 
+``` 
+
+### Cleanup rules 
+
+After a successful print: 
+- Delete original customer uploads. 
+- Delete processed PDFs. 
+- Delete temporary preview files. 
+- Delete page images. 
+- Remove the job's temporary directory. 
+
+For failed or uncertain jobs: 
+- Retain the necessary files for retry or manual review. 
+- Apply a configurable retention period. 
+- Allow manual cleanup. 
+
+Do not delete documents before the print outcome is established. 
+
+## 12. Local API Design 
+
+The Node.js backend exposes APIs on the shopkeeper's local network. 
+
+Example base URL: 
+
+```text 
+http://192.168.1.10:3000/api 
+``` 
+
+The address and port must be discovered or configured during installation. 
+
+### Shop APIs 
+
+| Method | Endpoint | Purpose | 
+|---|---|---| 
+| GET | `/api/shop/config` | Retrieve public shop configuration | 
+| GET | `/api/shop/status` | Check shop availability | 
+| PUT | `/api/shop/config` | Update shop settings | 
+
+### Printer APIs 
+
+| Method | Endpoint | Purpose | 
+|---|---|---| 
+| GET | `/api/printers` | List printers | 
+| POST | `/api/printers/discover` | Discover installed printers | 
+| PUT | `/api/printers/:id` | Update printer configuration | 
+| POST | `/api/printers/:id/test` | Test print | 
+
+### Pricing APIs 
+
+| Method | Endpoint | Purpose | 
+|---|---|---| 
+| GET | `/api/pricing` | Retrieve pricing | 
+| PUT | `/api/pricing` | Update pricing | 
+| POST | `/api/pricing/estimate` | Calculate order price | 
+
+### Customer job APIs 
+
+| Method | Endpoint | Purpose | 
+|---|---|---| 
+| POST | `/api/jobs` | Create print job | 
+| POST | `/api/jobs/:id/files` | Upload documents | 
+| POST | `/api/jobs/:id/preview` | Generate preview | 
+| POST | `/api/jobs/:id/estimate` | Calculate final estimate | 
+| POST | `/api/jobs/:id/payment-pending` | Mark payment pending | 
+| GET | `/api/jobs/:id/status` | Get job status | 
+
+### Shopkeeper job APIs 
+
+| Method | Endpoint | Purpose | 
+|---|---|---| 
+| GET | `/api/admin/jobs` | View jobs | 
+| POST | `/api/admin/jobs/:id/verify-payment` | Confirm received payment | 
+| POST | `/api/admin/jobs/:id/cancel` | Cancel job | 
+| POST | `/api/admin/jobs/:id/retry` | Retry eligible failed job | 
+
+The local API must validate every request, uploaded file, job state and configuration. It must not blindly execute arbitrary printer commands supplied by the browser. 
+
+## 13. Security and Privacy 
+
+Although there is no cloud authentication system, local network APIs still need protection. 
+
+Requirements: 
+- Bind the server to the local network only. 
+- Do not expose unrestricted administrative APIs to customers. 
+- Separate customer endpoints from shopkeeper administration endpoints. 
+- Use short-lived job references or session tokens for customer job access. 
+- Validate file extensions, MIME types, size and content. 
+- Restrict uploads to supported document formats. 
+- Prevent path traversal and arbitrary file access. 
+- Protect the local configuration and SQLite database. 
+- Avoid exposing printer names, IP addresses and internal settings to customers. 
+- Restrict API access through Windows Firewall to the intended local network. 
+
+The phone number is a public shop identifier, not a secret or authentication credential. 
+
+## 14. Error Handling and Edge Cases 
+
+| Scenario | Expected behavior | 
+|---|---| 
+| Shop server offline | Show connection error | 
+| Customer on mobile data | Explain same-Wi-Fi requirement | 
+| Invalid phone number in URL | Show invalid shop page | 
+| Shop not configured | Show shop unavailable | 
+| Printer disconnected | Mark printer unavailable | 
+| Printer busy | Queue the job | 
+| Paper out | Pause and notify shopkeeper | 
+| Paper jam | Mark job failed or manual review | 
+| Invalid PDF | Reject document | 
+| Password-protected PDF | Request an unlocked document | 
+| Upload interruption | Allow retry | 
+| Duplicate submission | Detect duplicate request | 
+| Customer closes browser | Preserve job state | 
+| Payment not received | Do not print | 
+| Incorrect payment amount | Require manual review | 
+| Partial printing | Require manual review | 
+| App restart | Recover pending jobs | 
+| Windows restart | Restore local server and job state | 
+| File deletion failure | Log cleanup task and retry | 
+| No compatible printer | Keep job waiting or reject | 
+| Pricing changed after order | Preserve original order price | 
+
+## 15. Non-Functional Requirements 
+
+- Low resource consumption while running in the background. 
+- Support Windows 10 and Windows 11, subject to testing. 
+- Support USB and Wi-Fi printers installed in Windows. 
+- Support multiple concurrent customer uploads. 
+- Maintain independent printer queues. 
+- Preserve jobs across application restarts. 
+- Keep documents local. 
+- No mandatory cloud subscriptions. 
+- No mandatory payment gateway. 
+- No command-line interaction for shopkeepers. 
+- Responsive mobile customer interface. 
+- Clear error messages and operational logs. 
+
+## 16. Development Phases 
+
+### Phase 1 — Windows Printing Proof of Concept 
+
+- Discover Windows printers. 
+- Read printer capabilities. 
+- Print PDF files. 
+- Support B&W and color. 
+- Support portrait and landscape. 
+- Test single-sided and duplex printing. 
+- Monitor Windows print jobs. 
+- Validate successful printing and file cleanup. 
+
+### Phase 2 — Local Backend 
+
+- Create Node.js Express server. 
+- Implement SQLite storage. 
+- Implement shop registration. 
+- Implement printer APIs. 
+- Implement pricing APIs. 
+- Implement customer upload APIs. 
+- Implement local job queue. 
+
+### Phase 3 — Shopkeeper Desktop Application 
+
+- Build Electron application. 
+- Implement setup wizard. 
+- Add printer discovery. 
+- Add pricing and payment settings. 
+- Generate shop-specific URL. 
+- Generate QR code. 
+- Add dashboard and system tray. 
+- Package Windows installer. 
+
+### Phase 4 — Customer Frontend 
+
+- Build React customer application. 
+- Implement dynamic shop URL parsing. 
+- Implement local API connection. 
+- Implement multiple document uploads. 
+- Implement PDF.js preview. 
+- Implement print options. 
+- Implement A4 preview. 
+- Implement price estimation. 
+- Implement UPI intent. 
+
+### Phase 5 — Print Job Automation 
+
+- Implement payment confirmation. 
+- Authorize jobs after shopkeeper verification. 
+- Implement printer routing. 
+- Implement per-printer queues. 
+- Implement job status updates. 
+- Implement failure recovery. 
+- Implement cleanup. 
+
+### Phase 6 — Testing and Release 
+
+- Test USB printers. 
+- Test Wi-Fi printers. 
+- Test multiple simultaneous customers. 
+- Test multiple printers. 
+- Test app restart and Windows restart. 
+- Test invalid files and network interruptions. 
+- Test QR routing. 
+- Test local network connectivity. 
+- Test duplicate and partial print scenarios. 
+- Build and validate the final Windows installer. 
+
+## 17. Acceptance Criteria 
+
+The MVP is considered ready when: 
+
+- Shopkeeper can install PrintHub using one Windows installer. 
+- Shopkeeper can register using only shop name and mobile number. 
+- Application runs its local server in the background. 
+- Application discovers installed printers. 
+- Shopkeeper can configure printer roles and pricing. 
+- Shopkeeper can configure UPI details. 
+- Application generates a QR code using the shop's mobile number. 
+- Customer can open the shop-specific page. 
+- Customer can upload multiple documents. 
+- Customer can reorder and remove documents. 
+- Customer can preview A4 output. 
+- Customer can configure supported print options. 
+- Customer cannot select physical printers or driver settings. 
+- Customer can calculate the final price. 
+- Customer can initiate UPI payment. 
+- Shopkeeper can manually verify payment. 
+- Verified jobs are automatically sent to the appropriate printer. 
+- Multiple customers can submit jobs concurrently. 
+- Multiple printers can process independent queues. 
+- Jobs survive application restarts. 
+- Successfully printed documents are deleted. 
+- Failed and uncertain jobs remain recoverable. 
+- Each shop's data remains isolated in its own installation. 
+- No cloud backend or central database is required for the MVP. 
+
+## 18. Out of Scope for MVP 
+
+- Central cloud backend. 
+- Central multi-tenant database. 
+- Cloud document storage. 
+- Payment gateway integration. 
+- Automatic bank or UPI payment verification. 
+- Remote printing over the public internet. 
+- Customer accounts and registration. 
+- Shop addresses and business profiles. 
+- Mobile applications. 
+- DOCX and advanced office document support. 
+- Remote shop monitoring. 
+- Centralized analytics. 
+
+--- 
+
+## Final Architecture Principle 
+
+**One shop = One Windows installation = One local backend = One local database = One independent printing environment.** 
+
+All shops share the same static customer frontend, but each shop's Windows application handles its own configuration, customers, files, payment confirmation, queues and printers. 
+
+The mobile number identifies the shop in the customer URL. It does not create a central tenant database. 
+
+The MVP should prioritize reliable local connectivity, printer compatibility, safe job execution and document cleanup over adding unnecessary cloud infrastructure.

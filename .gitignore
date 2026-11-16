@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.data/
+*.log
+packages/desktop/resources/SumatraPDF.exe
