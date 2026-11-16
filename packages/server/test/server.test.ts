@@ -125,7 +125,9 @@ test('printer fault mid-job and app restart never cause automatic reprints', asy
   // Simulate a crash right after submission: task recorded as printing, then restart.
   first.driver.faults.clear();
   await admin('POST', `/api/admin/jobs/${id}/verify-payment`, {});
+  // 'printing' is recorded before submission (by design), so wait for the driver to have the job too.
   await waitFor(() => first.app.db.get<{ state: string }>('SELECT state FROM tasks WHERE job_id = ?', id)!.state, (s) => s === 'printing');
+  await waitFor(() => first.driver.submitted.length, (n) => n >= 1);
   const submitted = first.driver.submitted.length;
   await first.app.close();
 
