@@ -160,3 +160,4 @@ export async function startServer(opts: StartOptions = {}): Promise<App> {
   log.info(`PrintHub ${VERSION} listening on ${config.host}:${config.port} (driver: ${config.driver}, data: ${config.dataDir})`);
   return app;
 }
+export { lanAddresses } from './network.ts';

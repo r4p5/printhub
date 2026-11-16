@@ -8,7 +8,8 @@
   "scripts": {
     "dev:server": "npm run dev -w @printhub/server",
     "dev:web": "npm run dev -w @printhub/web",
-    "build": "npm run build -w @printhub/web && npm run build -w @printhub/server",
+    "build:web": "npm run build -w @printhub/web",
+    "dist:win": "npm run dist -w @printhub/desktop",
     "test": "node --test packages/shared/test/*.test.ts packages/server/test/*.test.ts",
     "typecheck": "tsc -p packages/shared && tsc -p packages/server && tsc -p packages/web --noEmit"
   },

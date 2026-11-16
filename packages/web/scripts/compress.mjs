@@ -1,9 +1,10 @@
 // Pre-compresses build output so the shop server never spends CPU compressing per request.
 import { readdir, readFile, writeFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, gzipSync, constants } from 'node:zlib';
 
-const dist = new URL('../dist/', import.meta.url).pathname;
+const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const EXT = /\.(js|mjs|css|html|svg|json|webmanifest)$/;
 let saved = 0;
 

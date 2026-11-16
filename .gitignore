@@ -2,4 +2,6 @@ node_modules/
 dist/
 .data/
 *.log
-packages/desktop/resources/SumatraPDF.exe
+packages/desktop/resources/
+packages/desktop/release/
+packages/desktop/build/*.png

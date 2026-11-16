@@ -6,9 +6,8 @@
   "main": "./src/app.ts",
   "exports": { ".": "./src/app.ts" },
   "scripts": {
-    "dev": "PRINTHUB_DATA=../../.data PRINTHUB_DRIVER=mock node --watch src/main.ts",
-    "start": "node src/main.ts",
-    "build": "node scripts/bundle.mjs"
+    "dev": "PRINTHUB_DATA=../../.data PRINTHUB_DRIVER=mock PRINTHUB_DEV_CORS=1 PRINTHUB_WEB=../web/dist node --watch src/main.ts",
+    "start": "node src/main.ts"
   },
   "dependencies": {
     "@printhub/shared": "0.1.0",

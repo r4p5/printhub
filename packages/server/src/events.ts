@@ -12,6 +12,13 @@ export class EventHub {
   private channels = new Map<string, Set<ServerResponse>>();
   private count = 0;
   private timer: NodeJS.Timeout | null = null;
+  private listeners = new Set<(channel: string, event: string, data: unknown) => void>();
+
+  /** In-process subscribers (the desktop shell's tray notifications). */
+  listen(fn: (channel: string, event: string, data: unknown) => void) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
 
   subscribe(channel: string, res: ServerResponse): boolean {
     if (this.count >= MAX_CLIENTS) return false;
@@ -37,6 +44,7 @@ export class EventHub {
   }
 
   publish(channel: string, event: string, data: unknown) {
+    for (const fn of this.listeners) fn(channel, event, data);
     const set = this.channels.get(channel);
     if (!set) return;
     const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;

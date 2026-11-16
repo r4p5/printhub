@@ -1,6 +1,6 @@
 import { Worker } from 'node:worker_threads';
 import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { DocumentKind, PrintOptions } from '@printhub/shared';
 import type { InspectResult } from './render.ts';
 
@@ -102,5 +102,8 @@ export class PdfPool {
 function workerUrl(): URL {
   // Source runs as .ts; the bundled build emits pdf-worker.js next to the server bundle.
   const ts = new URL('./pdf-worker.ts', import.meta.url);
-  return existsSync(fileURLToPath(ts)) ? ts : new URL('./pdf-worker.js', import.meta.url);
+  if (existsSync(fileURLToPath(ts))) return ts;
+  // Inside a packaged Electron app the worker is unpacked from the asar archive.
+  const js = fileURLToPath(new URL('./pdf-worker.js', import.meta.url));
+  return pathToFileURL(js.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1'));
 }

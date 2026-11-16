@@ -1,0 +1,65 @@
+{
+  "name": "@printhub/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "PrintHub shop app",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "bundle": "node scripts/bundle.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "sumatra": "node scripts/fetch-sumatra.mjs",
+    "dist": "npm run build -w @printhub/web && npm run icons && npm run bundle && electron-builder --win nsis --x64"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@printhub/server": "0.1.0",
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.25.0"
+  },
+  "build": {
+    "appId": "in.printhub.shop",
+    "productName": "PrintHub",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "dist/pdf-worker.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web"
+      },
+      {
+        "from": "resources/SumatraPDF.exe",
+        "to": "SumatraPDF.exe"
+      },
+      {
+        "from": "build/tray.png",
+        "to": "tray.png"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "runAfterFinish": true,
+      "include": "build/installer.nsh"
+    },
+    "npmRebuild": false,
+    "publish": null
+  },
+  "author": "PrintHub"
+}

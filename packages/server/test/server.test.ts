@@ -189,7 +189,7 @@ test('rejects encrypted and corrupt PDFs with clear messages', async (t) => {
 
 test('render honours page range, rotation and image EXIF-free sizing', async () => {
   const { mkdtempSync, writeFileSync } = await import('node:fs');
-  const dir = mkdtempSync(join(process.env.TMPDIR ?? '/tmp', 'ph-render-'));
+  const dir = mkdtempSync(join((await import('node:os')).tmpdir(), 'ph-render-'));
   const src = join(dir, 'in.pdf');
   writeFileSync(src, await makePdf([[595, 842], [595, 842], [595, 842], [595, 842], [595, 842]]));
   const out = join(dir, 'out.pdf');
