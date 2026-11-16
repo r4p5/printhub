@@ -17,7 +17,7 @@
     "dev:web": "npm run dev -w @printhub/web",
     "build:web": "npm run build -w @printhub/web",
     "dist:win": "npm run dist -w @printhub/desktop",
-    "test": "node --test packages/shared/test/*.test.ts packages/server/test/*.test.ts",
+    "test": "node --test packages/shared/test/*.test.ts packages/server/test/*.test.ts packages/web/test/*.test.ts",
     "typecheck": "tsc -p packages/shared && tsc -p packages/server && tsc -p packages/web --noEmit",
     "deploy:pages": "node scripts/deploy-pages.mjs",
     "deploy:directory": "cd packages/directory && wrangler deploy"

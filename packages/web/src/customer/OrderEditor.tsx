@@ -5,6 +5,13 @@ import { imageSource, pdfSource } from '../lib/preview';
 import type { JobView, LocalDoc, ServerDoc, Session, ShopConfig } from './types';
 import { OptionsPanel, optionsSummary } from './OptionsPanel';
 import { DocPreview } from './DocPreview';
+import { saveOrder, type HistoryDoc } from './history';
+
+/** A document carried over from an earlier order ("Print again"). */
+export interface Prefill {
+  file: File;
+  options: PrintOptions;
+}
 
 const UPLOAD_CONCURRENCY = 2;
 
@@ -51,14 +58,17 @@ function lazyImage(key: string, fetchBlob: () => Promise<Blob>) {
   };
 }
 
-export function OrderEditor({ config, session, job, onSession, onJob }: {
+export function OrderEditor({ config, session, job, prefill, onSession, onJob }: {
   config: ShopConfig;
   session: Session | null;
   job: JobView | null;
+  prefill?: Prefill[];
   onSession: (s: Session) => void;
   onJob: (j: JobView) => void;
 }) {
-  const [docs, setDocs] = useState<LocalDoc[]>(() => (job && session ? job.documents.map((d) => fromServer(d, session)) : []));
+  const [docs, setDocs] = useState<LocalDoc[]>(() =>
+    job && session ? job.documents.map((d) => fromServer(d, session)) : (prefill ?? []).map((p) => makeDoc(p.file, p.options, config)),
+  );
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,21 +133,11 @@ export function OrderEditor({ config, session, job, onSession, onJob }: {
     const room = config.limits.maxFiles - docs.length;
     const added: LocalDoc[] = [];
     for (const f of Array.from(files)) {
-      const kind = kindOf(f);
-      const base = { name: f.name, size: f.size, file: f, progress: 0, serverId: null, pages: null, options: { ...DEFAULT_OPTIONS } };
-      const localId = randomId(16);
       if (added.length >= room) {
         setError(`At most ${config.limits.maxFiles} documents per order.`);
         break;
       }
-      if (!kind) {
-        added.push({ ...base, localId, kind: 'pdf', status: 'error', error: 'Only PDF, JPG and PNG files are supported', source: null });
-      } else if (f.size > config.limits.maxFileBytes) {
-        added.push({ ...base, localId, kind, status: 'error', error: `Larger than ${Math.round(config.limits.maxFileBytes / 1048576)} MB`, source: null });
-      } else {
-        const source = kind === 'pdf' ? pdfSource(localId, () => f.arrayBuffer()) : imageSource(localId, f);
-        added.push({ ...base, localId, kind, status: 'queued', error: null, source });
-      }
+      added.push(makeDoc(f, { ...DEFAULT_OPTIONS }, config));
     }
     setDocs((ds) => [...ds, ...added]);
   };
@@ -195,7 +195,9 @@ export function OrderEditor({ config, session, job, onSession, onJob }: {
       setDocs((ds) => ds.filter((d) => d.status !== 'error'));
       await api(`/api/jobs/${session.jobId}/estimate`, { method: 'POST', headers, body: { documents: ready.map((d) => ({ id: d.serverId, options: d.options })) } });
       await api(`/api/jobs/${session.jobId}/checkout`, { method: 'POST', headers });
-      onJob(await api<JobView>(`/api/jobs/${session.jobId}/status`, { headers }));
+      const view = await api<JobView>(`/api/jobs/${session.jobId}/status`, { headers });
+      void remember(view, session, ready);
+      onJob(view);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -288,5 +290,41 @@ export function OrderEditor({ config, session, job, onSession, onJob }: {
         </div>
       )}
     </div>
+  );
+}
+
+function makeDoc(f: File, options: PrintOptions, config: ShopConfig): LocalDoc {
+  const kind = kindOf(f);
+  const localId = randomId(16);
+  const base = { localId, name: f.name, size: f.size, file: f, progress: 0, serverId: null, pages: null, options };
+  if (!kind) return { ...base, kind: 'pdf', status: 'error', error: 'Only PDF, JPG and PNG files are supported', source: null };
+  if (f.size > config.limits.maxFileBytes) {
+    return { ...base, kind, status: 'error', error: `Larger than ${Math.round(config.limits.maxFileBytes / 1048576)} MB`, source: null };
+  }
+  const source = kind === 'pdf' ? pdfSource(localId, () => f.arrayBuffer()) : imageSource(localId, f);
+  return { ...base, kind, status: 'queued', error: null, source };
+}
+
+/**
+ * Saves the order with copies of its documents on this phone, for "My orders" and "Print again".
+ * Documents restored from the shop (no local File) are fetched back once while the shop still has them.
+ */
+async function remember(view: JobView, session: Session, docs: LocalDoc[]) {
+  const files = new Map<string, Blob>();
+  const histDocs: HistoryDoc[] = [];
+  for (const d of docs) {
+    const key = `${view.id}:${d.serverId}`;
+    let blob: Blob | null = d.file;
+    if (!blob) {
+      blob = await fetch(apiUrl(`/api/jobs/${session.jobId}/files/${d.serverId}?token=${encodeURIComponent(session.token)}`))
+        .then((r) => (r.ok ? r.blob() : null))
+        .catch(() => null);
+    }
+    if (blob) files.set(key, blob);
+    histDocs.push({ name: d.name, kind: d.kind, pages: d.pages ?? 0, size: d.size, options: d.options, fileKey: blob ? key : null });
+  }
+  await saveOrder(
+    { jobId: view.id, token: session.token, shop: session.shop, code: view.code, createdAt: Date.now(), total: view.total, state: view.state, docs: histDocs },
+    files,
   );
 }

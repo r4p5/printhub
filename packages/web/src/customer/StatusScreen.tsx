@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { JobState } from '@printhub/shared';
 import { api, rupees, subscribe } from '../lib/api';
 import type { JobView, Session } from './types';
@@ -12,7 +12,25 @@ const STEPS: { label: string; states: JobState[] }[] = [
 
 const FINAL: JobState[] = ['completed', 'cancelled', 'failed'];
 
-export function StatusScreen({ job, session, onJob, onNewOrder }: { job: JobView; session: Session; onJob: (j: JobView) => void; onNewOrder: () => void }) {
+export function StatusScreen({ job, session, onJob, onNewOrder, onPrintAgain }: {
+  job: JobView;
+  session: Session;
+  onJob: (j: JobView) => void;
+  onNewOrder: () => void;
+  onPrintAgain: () => Promise<void>;
+}) {
+  const [againError, setAgainError] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const again = async () => {
+    setPreparing(true);
+    setAgainError(null);
+    try {
+      await onPrintAgain();
+    } catch (e) {
+      setAgainError((e as Error).message);
+      setPreparing(false);
+    }
+  };
   const done = FINAL.includes(job.state);
 
   useEffect(() => {
@@ -78,7 +96,16 @@ export function StatusScreen({ job, session, onJob, onNewOrder }: { job: JobView
           ))}
         </ul>
       </div>
-      {done && <button className="btn-primary w-full" onClick={onNewOrder}>Start a new order</button>}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {/* Same documents and settings as a new order; the customer can still change them before paying. */}
+        <button className={done ? 'btn-primary' : 'btn-secondary'} disabled={preparing} onClick={again}>
+          {preparing ? 'Preparing…' : 'Print this again'}
+        </button>
+        <button className={done ? 'btn-secondary' : 'btn-primary'} onClick={onNewOrder}>
+          {done ? 'New order' : 'Start another order'}
+        </button>
+      </div>
+      {againError && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">{againError}</p>}
     </div>
   );
 }

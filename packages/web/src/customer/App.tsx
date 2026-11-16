@@ -3,7 +3,9 @@ import { api, ApiError } from '../lib/api';
 import type { JobView, Session, ShopConfig } from './types';
 import { loadSession, saveSession } from './session';
 import { HOSTED, locateShop } from './locate';
-import { OrderEditor } from './OrderEditor';
+import { OrderEditor, type Prefill } from './OrderEditor';
+import { HistoryScreen } from './HistoryScreen';
+import { getFile, listOrders, updateOrder, type HistoryOrder } from './history';
 import { PaymentScreen } from './PaymentScreen';
 import { StatusScreen } from './StatusScreen';
 
@@ -13,6 +15,10 @@ export function App() {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [session, setSession] = useState<Session | null>(null);
   const [job, setJob] = useState<JobView | null>(null);
+  const [view, setView] = useState<'order' | 'history'>('order');
+  const [prefill, setPrefill] = useState<Prefill[] | undefined>();
+  // Bumped to give each new order a fresh editor (new idempotency key, no leftover documents).
+  const [editorKey, setEditorKey] = useState(0);
 
   useEffect(() => {
     void (async () => {
@@ -57,10 +63,43 @@ export function App() {
       });
   }, [session]);
 
-  const startOver = () => {
+  // Keep the phone's order history in step with what the shop reports.
+  useEffect(() => {
+    if (job) void updateOrder(job.id, { state: job.state, total: job.total });
+  }, [job?.id, job?.state, job?.total]);
+
+  const startOver = (fill?: Prefill[]) => {
     saveSession(null);
     setSession(null);
     setJob(null);
+    setPrefill(fill);
+    setEditorKey((k) => k + 1);
+    setView('order');
+  };
+
+  const openOrder = (o: HistoryOrder) => {
+    const s = { jobId: o.jobId, token: o.token, shop: o.shop };
+    saveSession(s);
+    setJob(null);
+    setSession(s);
+    setView('order');
+  };
+
+  /** Rebuilds an earlier order as a new one from the copies saved on this phone. */
+  const printAgain = async (o: HistoryOrder) => {
+    const fill: Prefill[] = [];
+    for (const d of o.docs) {
+      const blob = d.fileKey ? await getFile(d.fileKey) : undefined;
+      if (blob) fill.push({ file: new File([blob], d.name, { type: blob.type }), options: { ...d.options } });
+    }
+    if (fill.length === 0) throw new Error('The documents of this order are no longer saved on this phone.');
+    startOver(fill);
+  };
+
+  const printAgainById = async (jobId: string) => {
+    const o = (await listOrders(session?.shop ?? '')).find((x) => x.jobId === jobId);
+    if (!o) throw new Error('This order was not saved on this phone.');
+    await printAgain(o);
   };
 
   if (load.kind === 'loading') return <Centered><Spinner /></Centered>;
@@ -82,11 +121,13 @@ export function App() {
   };
 
   let body;
-  if (session && !job) body = <Centered><Spinner /></Centered>;
+  if (view === 'history')
+    body = <HistoryScreen shop={config.mobileNumber!} onOpen={openOrder} onPrintAgain={printAgain} onNewOrder={() => startOver()} />;
+  else if (session && !job) body = <Centered><Spinner /></Centered>;
   else if (job && session && job.state === 'awaiting_payment')
     body = <PaymentScreen job={job} session={session} onJob={setJob} />;
   else if (job && session && job.state !== 'uploaded')
-    body = <StatusScreen job={job} session={session} onJob={setJob} onNewOrder={startOver} />;
+    body = <StatusScreen job={job} session={session} onJob={setJob} onNewOrder={() => startOver()} onPrintAgain={() => printAgainById(job.id)} />;
   else if (!config.accepting)
     body = (
       <div className="card text-center">
@@ -94,7 +135,7 @@ export function App() {
         <p className="mt-1 text-sm text-slate-600">Please ask the shopkeeper.</p>
       </div>
     );
-  else body = <OrderEditor config={config} session={session} job={job} onSession={onSession} onJob={setJob} />;
+  else body = <OrderEditor key={editorKey} config={config} session={session} job={job} prefill={prefill} onSession={onSession} onJob={setJob} />;
 
   return (
     <div className="mx-auto min-h-dvh max-w-2xl px-4 pb-32 pt-4">
@@ -102,10 +143,13 @@ export function App() {
         <div className="grid size-10 place-items-center rounded-xl bg-slate-900 text-white">
           <svg viewBox="0 0 24 24" className="size-5 fill-current" aria-hidden><path d="M6 2h12v6H6zM4 9h16a2 2 0 0 1 2 2v6h-4v5H6v-5H2v-6a2 2 0 0 1 2-2zm4 8v3h8v-3z" /></svg>
         </div>
-        <div>
-          <h1 className="font-semibold leading-tight">{config.shopName}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-semibold leading-tight">{config.shopName}</h1>
           <p className="text-xs text-slate-500">Upload, preview and pay — collect your prints at the shop</p>
         </div>
+        <button className="btn-secondary btn-sm shrink-0" onClick={() => setView(view === 'history' ? 'order' : 'history')}>
+          {view === 'history' ? 'Back' : 'My orders'}
+        </button>
       </header>
       {body}
     </div>
