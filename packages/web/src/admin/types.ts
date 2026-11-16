@@ -29,11 +29,20 @@ export interface Overview {
   open: boolean;
   printers: Printer[];
   server: { version: string; port: number; addresses: { address: string; iface: string }[]; dataDir: string; diskFreeBytes: number | null; uptimeSec: number; memoryMb: number };
+  online: OnlineView & { tunnel: { state: 'off' | 'starting' | 'online' | 'error'; url: string | null; registered: boolean; error: string | null } };
   customerUrl: string | null;
   directUrl: string | null;
 }
 
+export interface OnlineView {
+  enabled: boolean;
+  mode: 'quick' | 'named';
+  publicUrl: string;
+  hasNamedToken: boolean;
+}
+
 export interface AllSettings {
+  online: OnlineView;
   shop: { shopName: string; mobileNumber: string } | null;
   payment: { upiId: string; merchantName: string; instructions: string };
   pricing: Pricing;

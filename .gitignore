@@ -5,3 +5,5 @@ dist/
 packages/desktop/resources/
 packages/desktop/release/
 packages/desktop/build/*.png
+packages/web/dist-pages/
+.wrangler/

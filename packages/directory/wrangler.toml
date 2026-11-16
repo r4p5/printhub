@@ -1,0 +1,13 @@
+name = "printhub-directory"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+ALLOWED_HOST_SUFFIXES = ".trycloudflare.com"
+APP_ORIGIN = "https://r4p5.github.io"
+
+# Created with `wrangler kv namespace create SHOPS`
+[[kv_namespaces]]
+binding = "SHOPS"
+id = "9f5eece6b67744ed88a8110ba0bb0fb7"

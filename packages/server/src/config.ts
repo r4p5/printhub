@@ -10,7 +10,14 @@ export interface ServerConfig {
   /** Directory of the built web app (customer + admin), served statically. */
   webDir: string | null;
   sumatraPath: string | null;
+  /** Loopback-only port that cloudflared forwards internet traffic to. Customer routes only. */
+  publicPort: number;
+  cloudflaredPath: string | null;
+  /** Directory Worker that maps a shop's mobile number to its current public URL. */
+  directoryUrl: string;
 }
+
+export const DEFAULT_DIRECTORY_URL = 'https://printhub-directory.roopesh-screencanvas.workers.dev';
 
 export function defaultDataDir(): string {
   if (process.platform === 'win32') return join(process.env.ProgramData ?? 'C:\\ProgramData', 'PrintHub');
@@ -28,6 +35,9 @@ export function loadConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
     driver: overrides.driver ?? (env.PRINTHUB_DRIVER === 'mock' || process.platform !== 'win32' ? 'mock' : 'windows'),
     webDir: overrides.webDir ?? env.PRINTHUB_WEB ?? null,
     sumatraPath: overrides.sumatraPath ?? env.PRINTHUB_SUMATRA ?? null,
+    publicPort: overrides.publicPort ?? Number(env.PRINTHUB_PUBLIC_PORT ?? 3001),
+    cloudflaredPath: overrides.cloudflaredPath ?? env.PRINTHUB_CLOUDFLARED ?? null,
+    directoryUrl: (overrides.directoryUrl ?? env.PRINTHUB_DIRECTORY ?? DEFAULT_DIRECTORY_URL).replace(/\/+$/, ''),
   };
 }
 

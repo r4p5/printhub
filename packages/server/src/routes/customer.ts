@@ -14,10 +14,14 @@ const INSPECT_ERRORS: Record<string, [number, string, string]> = {
   TOO_LARGE: [422, 'This document is too complex to process.', 'TOO_LARGE'],
 };
 
-export function customerRoutes(r: Router, app: App) {
+/** Total upload size per order; bounds disk use by any single (possibly anonymous) customer. */
+const MAX_ORDER_BYTES = 200 * 1024 * 1024;
+
+export function customerRoutes(r: Router, app: App, opts: { public: boolean }) {
   const { jobs, settings, printers, pool, hub } = app;
-  const createLimit = new RateLimiter(20, 60_000);
-  const uploadLimit = new RateLimiter(60, 60_000);
+  // Internet visitors get tighter limits than people standing in the shop.
+  const createLimit = opts.public ? new RateLimiter(10, 3600_000) : new RateLimiter(20, 60_000);
+  const uploadLimit = opts.public ? new RateLimiter(40, 600_000) : new RateLimiter(60, 60_000);
 
   const auth = (ctx: Ctx): JobRow => jobs.authorize(ctx.params.id!, (ctx.req.headers['x-job-token'] as string | undefined) ?? ctx.query.get('token'));
 
@@ -91,6 +95,10 @@ export function customerRoutes(r: Router, app: App) {
       return { document: present(existing) };
     }
     if (docs.length >= MAX_FILES_PER_JOB) throw new HttpError(400, `At most ${MAX_FILES_PER_JOB} documents per order`);
+    const used = docs.reduce((s, d) => s + d.size, 0);
+    if (used + Number(ctx.req.headers['content-length'] ?? 0) > MAX_ORDER_BYTES) {
+      throw new HttpError(413, `An order can hold at most ${MAX_ORDER_BYTES / 1048576} MB of documents`, 'ORDER_TOO_LARGE');
+    }
 
     const file = await receiveFile(ctx.req, jobs.dir(job.id), docId);
     let pages: number;

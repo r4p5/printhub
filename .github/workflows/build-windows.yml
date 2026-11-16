@@ -32,6 +32,7 @@ jobs:
         run: |
           npm run icons -w @printhub/desktop
           npm run sumatra -w @printhub/desktop
+          npm run cloudflared -w @printhub/desktop
           npm run bundle -w @printhub/desktop
 
       - name: Package installer

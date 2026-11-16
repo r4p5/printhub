@@ -19,12 +19,26 @@ export function StatusScreen({ job, session, onJob, onNewOrder }: { job: JobView
     if (done) return;
     const headers = { 'x-job-token': session.token };
     const refresh = () => api<JobView>(`/api/jobs/${session.jobId}/status`, { headers }).then(onJob).catch(() => {});
-    // Push updates while open; a refresh on return covers phones that suspended the connection.
-    const close = subscribe(`/api/jobs/${session.jobId}/events?token=${encodeURIComponent(session.token)}`, { status: () => void refresh() });
+    // Push updates while open. The server sends one event on connect, so silence means the push
+    // channel isn't working (Cloudflare temporary tunnels buffer streams): close it, so it doesn't
+    // hold a tunnel connection for nothing, and poll instead.
+    let pushing = false;
+    const close = subscribe(`/api/jobs/${session.jobId}/events?token=${encodeURIComponent(session.token)}`, {
+      status: () => {
+        pushing = true;
+        void refresh();
+      },
+    });
+    const giveUp = setTimeout(() => !pushing && close(), 10_000);
+    const poll = setInterval(() => {
+      if (!pushing && document.visibilityState === 'visible') void refresh();
+    }, 8_000);
     const onVisible = () => document.visibilityState === 'visible' && refresh();
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       close();
+      clearTimeout(giveUp);
+      clearInterval(poll);
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [session.jobId, done]);

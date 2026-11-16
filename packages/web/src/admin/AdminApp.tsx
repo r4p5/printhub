@@ -4,6 +4,7 @@ import { adminApi, adminToken } from './client';
 import { PaymentForm, PricingForm, PrinterList, ShopForm } from './forms';
 import { OrderGroups } from './Orders';
 import { QrPanel } from './QrPanel';
+import { OnlinePanel } from './OnlinePanel';
 import { SetupWizard } from './SetupWizard';
 import type { AdminJob, AllSettings, Overview } from './types';
 
@@ -66,7 +67,7 @@ export function AdminApp() {
       clearTimeout(timer);
       timer = setTimeout(() => void reload(), 250);
     };
-    const close = subscribe(`/api/admin/events?token=${encodeURIComponent(adminToken)}`, { job: soon, printer: soon, settings: soon, alert: soon });
+    const close = subscribe(`/api/admin/events?token=${encodeURIComponent(adminToken)}`, { job: soon, printer: soon, settings: soon, alert: soon, tunnel: soon });
     return () => {
       clearTimeout(timer);
       close();
@@ -150,6 +151,7 @@ export function AdminApp() {
         <div className="grid gap-4 md:grid-cols-2">
           <div className="card print:border-0 print:shadow-none"><h2 className="mb-3 font-semibold print:hidden">Customer QR code</h2><QrPanel overview={overview} shopName={settings.shop?.shopName ?? ''} /></div>
           <div className="space-y-4 print:hidden">
+            <div className="card"><h2 className="mb-3 font-semibold">Online orders</h2><OnlinePanel overview={overview} onSaved={reload} /></div>
             <div className="card"><h2 className="mb-3 font-semibold">Shop details</h2><ShopForm settings={settings} onSaved={reload} /></div>
             <div className="card text-xs text-slate-600">
               <h2 className="mb-2 text-sm font-semibold text-slate-900">Storage</h2>

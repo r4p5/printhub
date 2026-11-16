@@ -1,27 +1,51 @@
 # PrintHub
 
 Self-service printing for local print shops: customers scan a QR code, upload documents from
-their phone, preview A4 output, pay by UPI, and the shop's Windows PC prints once the
-shopkeeper confirms payment. No cloud backend. See `prd` for the full requirements.
+their phone from anywhere (mobile data or any Wi-Fi), preview A4 output, pay by UPI, and the
+shop's Windows PC prints once the shopkeeper confirms payment. Documents and orders stay on
+the shop PC. See `prd` for the original requirements.
 
 ```
 packages/
-  shared/    Pure logic used by both browser and server: options, page ranges, A4/N-up layout, pricing
-  server/    Local backend (Node, no native modules): API, SQLite, PDF engine, print queue, drivers
-  web/       React app: customer page (index.html) + shopkeeper dashboard (admin.html)
-  launcher/  Two static files for GitHub Pages that forward a QR scan to the shop PC
-  desktop/   Electron shell: runs the server in-process, tray icon, Windows installer
+  shared/     Pure logic used by both browser and server: options, page ranges, A4/N-up layout, pricing
+  server/     Shop PC backend (Node, no native modules): API, SQLite, PDF engine, print queue, drivers, tunnel
+  web/        React app: customer page (hosted on GitHub Pages) + shopkeeper dashboard (on the shop PC)
+  directory/  Cloudflare Worker: maps a shop's mobile number to its current public address
+  desktop/    Electron shell: runs the server in-process, tray icon, Windows installer
+  launcher/   Legacy LAN-only launcher (superseded by the hosted customer app)
 ```
 
-## Key design decisions
+## How customers reach the shop
 
-**GitHub Pages is a launcher, not the app.** A page served over `https://…github.io` cannot
-call `http://192.168.x.x` (mixed content, and Chrome's Private Network Access). So the QR
-encodes `https://r4p5.github.io/<mobile>#h=<lan-ip>:3000`; the launcher validates the number
-and the private address and forwards the browser to the shop PC, which serves the customer
-app itself (same origin: no CORS, no mixed content). The `#fragment` never reaches GitHub.
-If the PC's LAN address changes, the desktop app notifies the shopkeeper to reprint the QR;
-a DHCP reservation in the router avoids this.
+```
+Customer phone ── r4p5.github.io/<mobile> ──► customer app (GitHub Pages, static)
+      │                                            │ 1. where is shop <mobile>?
+      │                                            ▼
+      │                         printhub-directory.<account>.workers.dev  (Cloudflare Worker + KV)
+      │ 2. API calls over HTTPS                    ▲ registers its current address
+      ▼                                            │
+ Cloudflare Tunnel ──► cloudflared on shop PC ──► public listener 127.0.0.1:3001 (customer API only)
+                                                  LAN listener :3000 (dashboard + in-shop Wi-Fi)
+```
+
+- **The QR never changes.** It is `https://r4p5.github.io/<mobile>`. On startup the shop PC
+  opens a free Cloudflare tunnel (outbound only: no router setup, no fixed IP, no open ports)
+  and tells the directory its address. A new address after a restart or power cut is picked
+  up within seconds.
+- **The dashboard is not on the internet.** cloudflared forwards only to a loopback listener
+  that serves customer routes. Admin routes are not registered there at all, so the password
+  alone isn't what protects them. Internet visitors are rate-limited by their real IP
+  (`cf-connecting-ip`), and each order is capped at 20 files and 200 MB.
+- **The directory stores only `mobile → address`.** The first PC to register a number owns it
+  (by a secret kept on that PC). Addresses must be on approved hosts (`.trycloudflare.com`, plus
+  your own domain if added), so a record can't send customers to an outside site.
+- **The tunnel runs only while the shop is open for orders.**
+- Temporary tunnels buffer live (SSE) updates, so the status page falls back to polling every
+  8 s. For a permanent address and live updates, use a named tunnel on your own domain
+  (Dashboard → Shop & QR → Online orders → "My own domain"), and add that domain to
+  `ALLOWED_HOST_SUFFIXES` in `packages/directory/wrangler.toml`.
+- Customers inside the shop can still use the LAN (direct link in the dashboard); QR codes
+  printed earlier with `#h=<ip>` keep working.
 
 **Preview = print.** `layoutSheets()` in `shared` computes every sheet side; the phone draws
 it on canvas and the server draws the same geometry into the print PDF with pdf-lib. Pricing
@@ -113,29 +137,44 @@ The installer (per-machine, one UAC prompt) adds a firewall rule for TCP 3000 li
 local subnet, creates `C:\ProgramData\PrintHub` writable by standard users, and registers
 auto-start at login (`--hidden`, tray only).
 
-## Customer launcher on GitHub Pages
+## Deploying the online parts
 
-The shop QR codes point to `https://r4p5.github.io/<mobile>#h=<shop-pc-ip>:3000`. These are
-served by the public repository **`r4p5/r4p5.github.io`**, which holds only
-`packages/launcher/index.html` and `404.html` (`404.html` makes every `/<mobile>` path work
-without per-shop files). After changing the launcher, copy both files to that repository and push.
+**Customer app → GitHub Pages** (public repo `r4p5/r4p5.github.io`, holds only the built page):
 
-Check it: open `https://r4p5.github.io/9066191970`. Without `#h=…` it says to scan the shop
-QR. With `#h=192.168.1.10:3000` it forwards to the shop PC.
+```bash
+npm run deploy:pages      # builds packages/web in "pages" mode and pushes dist-pages/
+```
+
+`404.html` is a copy of `index.html`, so every `/<mobile>` path loads the app. The directory
+address is baked in from `packages/web/.env.pages`.
+
+**Directory → Cloudflare Workers** (free plan):
+
+```bash
+npx wrangler login
+cd packages/directory && npx wrangler deploy
+# move a shop's number to a new PC:
+npx wrangler kv key delete --binding SHOPS <mobile> --remote
+```
+
+If the Worker URL changes, update `DEFAULT_DIRECTORY_URL` in `packages/server/src/config.ts`
+and `packages/web/.env.pages`, then rebuild both.
 
 ## First-time shop setup (after installing)
 
 1. Run the installer on the shop PC. PrintHub opens the setup wizard.
 2. Enter the shop name and mobile number, enable the printers, set prices and the UPI ID.
-3. Print the QR poster from **Shop & QR** and put it at the counter.
-4. In the router settings, add a **DHCP reservation** for this PC so its IP address never
-   changes; otherwise the QR stops working when the router hands out a new address.
-5. Recommended for unattended shops: enable Windows auto-login, and the BIOS setting
+3. Print the QR poster from **Shop & QR** and put it at the counter. Online orders are on by
+   default; the panel there shows when the shop is reachable from the internet.
+4. Recommended for unattended shops: enable Windows auto-login, and the BIOS setting
    "Restore on AC power loss = On", so PrintHub comes back by itself after a power cut.
+   (With online orders off, also add a router DHCP reservation so the LAN QR keeps working.)
 
 ## Status / not yet verified
 
-Built and tested on Linux with the mock driver. **Not yet run on Windows**:
+Tested end to end on Linux with the mock printer driver, including a real Cloudflare tunnel:
+directory lookup → upload over the internet → checkout → shopkeeper confirms on the LAN →
+customer sees "Printed", plus a restart that changed the tunnel address. **Not yet run on Windows**:
 
 - `WindowsDriver`: printer discovery via `Win32_Printer`, SumatraPDF `-print-to` settings,
   and spooler job tracking via `Win32_PrintJob` (Phase 1 of the PRD). Validate with real USB

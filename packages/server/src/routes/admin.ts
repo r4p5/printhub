@@ -4,7 +4,7 @@ import type { App } from '../app.ts';
 import { HttpError, isLoopback, readJson, safeEqual, type Ctx, type Router } from '../http.ts';
 import { newId } from '../jobs.ts';
 import { lanAddresses } from '../network.ts';
-import { validateGeneral, validatePayment, validatePricing, validateShop } from '../settings.ts';
+import { validateGeneral, validateOnline, validatePayment, validatePricing, validateShop } from '../settings.ts';
 
 /**
  * Shopkeeper APIs. Reachable only from this computer (the desktop app) and only with the
@@ -12,6 +12,7 @@ import { validateGeneral, validatePayment, validatePricing, validateShop } from 
  */
 export function adminRoutes(r: Router, app: App) {
   const { jobs, settings, printers, queue, hub, driver, config } = app;
+  const changed = () => hub.publish('admin', 'settings', {});
 
   const guard = (handler: (ctx: Ctx) => unknown) => (ctx: Ctx) => {
     const token = (ctx.req.headers['x-admin-token'] as string | undefined) ?? ctx.query.get('token') ?? '';
@@ -31,7 +32,23 @@ export function adminRoutes(r: Router, app: App) {
     payment: settings.get('payment'),
     pricing: settings.get('pricing'),
     general: settings.get('general'),
+    online: onlineView(),
   })));
+
+  // The tunnel token and directory secret never leave the server.
+  const onlineView = () => {
+    const { namedToken, directorySecret: _secret, ...rest } = settings.get('online');
+    return { ...rest, hasNamedToken: namedToken !== '' };
+  };
+
+  r.put('/api/admin/online', guard(async (ctx) => {
+    const before = settings.get('online');
+    const next = validateOnline(await body(ctx), before);
+    settings.set('online', next);
+    if (next.mode !== before.mode || next.namedToken !== before.namedToken) app.tunnel.restart();
+    changed();
+    return onlineView();
+  }));
 
   r.get('/api/admin/overview', guard(async () => {
     const shop = settings.get('shop');
@@ -55,8 +72,16 @@ export function adminRoutes(r: Router, app: App) {
         uptimeSec: Math.round(process.uptime()),
         memoryMb: Math.round(process.memoryUsage().rss / 1048576),
       },
-      // The QR target: static launcher (stable shop URL) carrying this PC's LAN address.
-      customerUrl: shop && host ? `${general.launcherBaseUrl}/${shop.mobileNumber}#h=${host}` : null,
+      online: { ...onlineView(), tunnel: app.tunnel.get() },
+      // Online: the hosted app finds the shop through the directory, so the QR holds no IP and
+      // survives address changes. Offline: the launcher carries this PC's LAN address.
+      customerUrl: shop
+        ? settings.get('online').enabled
+          ? `${general.launcherBaseUrl}/${shop.mobileNumber}`
+          : host
+            ? `${general.launcherBaseUrl}/${shop.mobileNumber}#h=${host}`
+            : null
+        : null,
       directUrl: shop && host ? `http://${host}/?shop=${shop.mobileNumber}` : null,
     };
   }));
@@ -71,7 +96,7 @@ export function adminRoutes(r: Router, app: App) {
       if (next.open && !next.setupComplete) throw new HttpError(409, 'Finish setup before opening the shop');
       settings.set('general', next);
     }
-    hub.publish('admin', 'settings', {});
+    changed();
     return { shop: settings.get('shop'), general: settings.get('general') };
   }));
 
@@ -92,9 +117,10 @@ export function adminRoutes(r: Router, app: App) {
     if (!settings.get('shop')) problems.push('Shop name and mobile number are not set');
     if (!settings.get('payment').upiId) problems.push('UPI ID is not set');
     if (!printers.all().some((p) => p.enabled && p.present)) problems.push('Enable at least one printer');
-    if (lanAddresses().length === 0) problems.push('This computer is not connected to a local network');
+    if (lanAddresses().length === 0 && !settings.get('online').enabled) problems.push('This computer is not connected to a local network');
     if (problems.length) throw new HttpError(409, problems.join('; '), 'SETUP_INCOMPLETE');
     settings.set('general', { ...settings.get('general'), setupComplete: true, open: true });
+    changed();
     return settings.get('general');
   }));
 

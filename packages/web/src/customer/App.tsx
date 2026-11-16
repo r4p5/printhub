@@ -1,18 +1,13 @@
 import { useEffect, useState } from 'react';
-import { MOBILE_RE } from '@printhub/shared';
 import { api, ApiError } from '../lib/api';
 import type { JobView, Session, ShopConfig } from './types';
 import { loadSession, saveSession } from './session';
+import { HOSTED, locateShop } from './locate';
 import { OrderEditor } from './OrderEditor';
 import { PaymentScreen } from './PaymentScreen';
 import { StatusScreen } from './StatusScreen';
 
 type Load = { kind: 'loading' } | { kind: 'error'; title: string; detail: string } | { kind: 'ready'; config: ShopConfig };
-
-/** The shop number arrives via ?shop= from the launcher; served locally it's optional. */
-function shopParam() {
-  return new URLSearchParams(location.search).get('shop');
-}
 
 export function App() {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
@@ -20,13 +15,13 @@ export function App() {
   const [job, setJob] = useState<JobView | null>(null);
 
   useEffect(() => {
-    const wanted = shopParam();
-    if (wanted !== null && !MOBILE_RE.test(wanted)) {
-      setLoad({ kind: 'error', title: 'Invalid shop link', detail: 'Please scan the QR code displayed at the shop again.' });
-      return;
-    }
-    api<ShopConfig>('/api/shop/config')
-      .then((config) => {
+    void (async () => {
+      const where = await locateShop();
+      if (where.ok === 'redirecting') return;
+      if (!where.ok) return setLoad({ kind: 'error', title: where.title, detail: where.detail });
+      const wanted = where.mobile;
+      try {
+        const config = await api<ShopConfig>('/api/shop/config');
         if (!config.shopName || !config.mobileNumber) {
           setLoad({ kind: 'error', title: 'Shop not set up yet', detail: 'This shop has not finished setting up PrintHub.' });
         } else if (wanted && wanted !== config.mobileNumber) {
@@ -36,14 +31,19 @@ export function App() {
           setSession(loadSession(config.mobileNumber));
           setLoad({ kind: 'ready', config });
         }
-      })
-      .catch((e: ApiError) =>
+      } catch (e) {
+        const offline = (e as ApiError).code === 'OFFLINE';
         setLoad({
           kind: 'error',
-          title: 'Cannot reach the shop',
-          detail: e.code === 'OFFLINE' ? "Connect your phone to the shop's Wi-Fi network (mobile data won't work), then try again." : e.message,
-        }),
-      );
+          title: offline ? (HOSTED ? 'Shop computer is offline' : 'Cannot reach the shop') : 'Something went wrong',
+          detail: offline
+            ? HOSTED
+              ? "The shop's computer isn't responding right now. Please try again in a minute or ask at the counter."
+              : "Connect your phone to the shop's Wi-Fi network, then try again."
+            : (e as Error).message,
+        });
+      }
+    })();
   }, []);
 
   // Restore an order after a reload or reopening the browser.
@@ -104,7 +104,7 @@ export function App() {
         </div>
         <div>
           <h1 className="font-semibold leading-tight">{config.shopName}</h1>
-          <p className="text-xs text-slate-500">Upload, preview and pay — we print it here</p>
+          <p className="text-xs text-slate-500">Upload, preview and pay — collect your prints at the shop</p>
         </div>
       </header>
       {body}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_OPTIONS, estimateOrder, parsePageRange, type PrintOptions } from '@printhub/shared';
-import { api, ApiError, randomId, rupees, uploadFile } from '../lib/api';
+import { api, ApiError, apiUrl, randomId, rupees, uploadFile } from '../lib/api';
 import { imageSource, pdfSource } from '../lib/preview';
 import type { JobView, LocalDoc, ServerDoc, Session, ShopConfig } from './types';
 import { OptionsPanel, optionsSummary } from './OptionsPanel';
@@ -17,7 +17,7 @@ function kindOf(f: File): LocalDoc['kind'] | null {
 }
 
 function fromServer(d: ServerDoc, session: Session): LocalDoc {
-  const url = `/api/jobs/${session.jobId}/files/${d.id}?token=${encodeURIComponent(session.token)}`;
+  const url = apiUrl(`/api/jobs/${session.jobId}/files/${d.id}?token=${encodeURIComponent(session.token)}`);
   const fetchBlob = () => fetch(url).then((r) => (r.ok ? r.blob() : Promise.reject(new Error('Document unavailable'))));
   return {
     localId: d.id,

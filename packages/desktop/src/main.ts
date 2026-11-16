@@ -19,12 +19,17 @@ let lastAddress: string | null = null;
 let quitting = false;
 
 // Packaged: electron-builder extraResources. Development: paths relative to dist/main.js.
-const DEV_RESOURCES: Record<string, string> = { web: '../../web/dist', 'SumatraPDF.exe': '../resources/SumatraPDF.exe', 'tray.png': '../build/tray.png' };
+const DEV_RESOURCES: Record<string, string> = {
+  web: '../../web/dist',
+  'SumatraPDF.exe': '../resources/SumatraPDF.exe',
+  'cloudflared.exe': '../resources/cloudflared.exe',
+  'tray.png': '../build/tray.png',
+};
 const resource = (name: string) => (app.isPackaged ? join(process.resourcesPath, name) : fileURLToPath(new URL(DEV_RESOURCES[name]!, import.meta.url)));
 
 async function boot() {
   try {
-    server = await startServer({ port: PORT, webDir: resource('web'), sumatraPath: resource('SumatraPDF.exe') });
+    server = await startServer({ port: PORT, webDir: resource('web'), sumatraPath: resource('SumatraPDF.exe'), cloudflaredPath: resource('cloudflared.exe') });
   } catch (e) {
     const err = e as NodeJS.ErrnoException;
     dialog.showErrorBox(
@@ -47,6 +52,7 @@ function onServerEvent(channel: string, event: string, data: unknown) {
   const d = data as { state?: string; error?: string };
   if (event === 'job' && d.state === 'payment_pending') notify('Payment to verify', 'A customer says they have paid. Check your UPI app and confirm.');
   else if (event === 'alert' && d.state !== 'completed') notify('Printing needs attention', d.error ?? 'Check the PrintHub dashboard.');
+  else if (event === 'tunnel') buildTray();
   else if (event === 'settings') {
     updateKeepAwake();
     buildTray();
@@ -77,7 +83,8 @@ function buildTray() {
     tray = new Tray(nativeImage.createFromPath(resource('tray.png')));
     tray.on('click', openWindow);
   }
-  tray.setToolTip(`PrintHub — ${open ? 'open for orders' : 'closed'}`);
+  const t = server.tunnel.get();
+  tray.setToolTip(`PrintHub — ${open ? 'open for orders' : 'closed'}${t.state === 'online' ? ' · online' : t.state === 'error' ? ' · online orders unavailable' : ''}`);
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open dashboard', click: openWindow },

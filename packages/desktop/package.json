@@ -9,7 +9,8 @@
     "bundle": "node scripts/bundle.mjs",
     "icons": "node scripts/make-icons.mjs",
     "sumatra": "node scripts/fetch-sumatra.mjs",
-    "dist": "npm run build -w @printhub/web && npm run icons && npm run bundle && electron-builder --win nsis --x64"
+    "dist": "npm run build -w @printhub/web && npm run icons && npm run bundle && electron-builder --win nsis --x64",
+    "cloudflared": "node scripts/fetch-cloudflared.mjs"
   },
   "dependencies": {},
   "devDependencies": {
@@ -40,6 +41,10 @@
       {
         "from": "resources/SumatraPDF.exe",
         "to": "SumatraPDF.exe"
+      },
+      {
+        "from": "resources/cloudflared.exe",
+        "to": "cloudflared.exe"
       },
       {
         "from": "build/tray.png",

@@ -8,9 +8,9 @@ import { MockDriver } from '../src/printing/mock.ts';
 
 process.env.NODE_ENV = 'test';
 
-export async function boot(dataDir = mkdtempSync(join(tmpdir(), 'printhub-')), printMs = 150) {
+export async function boot(dataDir = mkdtempSync(join(tmpdir(), 'printhub-')), printMs = 150, extra: Parameters<typeof startServer>[0] = {}) {
   const driver = new MockDriver(join(dataDir, 'mock-output'), printMs);
-  const app = await startServer({ dataDir, port: 0, host: '127.0.0.1', driverInstance: driver, skipDiscovery: true });
+  const app = await startServer({ dataDir, port: 0, publicPort: 0, host: '127.0.0.1', driverInstance: driver, skipDiscovery: true, ...extra });
   return { app, driver, dataDir, ...client(app) };
 }
 

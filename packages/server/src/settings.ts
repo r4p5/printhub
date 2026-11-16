@@ -22,11 +22,24 @@ export interface GeneralSettings {
   launcherBaseUrl: string;
 }
 
+export interface OnlineSettings {
+  /** Expose customer pages to the internet through Cloudflare. */
+  enabled: boolean;
+  /** quick: free temporary trycloudflare.com address. named: permanent hostname on your own domain. */
+  mode: 'quick' | 'named';
+  namedToken: string;
+  /** Public https URL of the named tunnel, e.g. https://9066191970.printhub.eu.org */
+  publicUrl: string;
+  /** Proves to the directory that this PC owns the shop's number. Never leaves this PC except to the directory. */
+  directorySecret: string;
+}
+
 interface SettingsShape {
   shop: ShopSettings | null;
   payment: PaymentSettings;
   pricing: Pricing;
   general: GeneralSettings;
+  online: OnlineSettings;
   adminToken: string;
 }
 
@@ -35,6 +48,7 @@ const DEFAULTS: Omit<SettingsShape, 'adminToken'> = {
   payment: { upiId: '', merchantName: '', instructions: '' },
   pricing: { bwPerSide: 200, colorPerSide: 1000, bwDuplexPerSide: null, colorDuplexPerSide: null, minimumOrder: 0, maxCopies: 50 },
   general: { open: false, setupComplete: false, retentionDays: 7, launcherBaseUrl: 'https://r4p5.github.io' },
+  online: { enabled: true, mode: 'quick', namedToken: '', publicUrl: '', directorySecret: '' },
 };
 
 /** Small key/value store held in memory; reads are free, writes go straight to SQLite. */
@@ -49,6 +63,7 @@ export class Settings {
       this.cache.set(row.key, JSON.parse(row.value));
     }
     if (!this.cache.has('adminToken')) this.set('adminToken', randomBytes(24).toString('base64url'));
+    if (!this.get('online').directorySecret) this.set('online', { ...this.get('online'), directorySecret: randomBytes(32).toString('base64url') });
   }
 
   get<K extends keyof SettingsShape>(key: K): SettingsShape[K] {
@@ -131,5 +146,26 @@ export function validateGeneral(input: Record<string, unknown>, current: General
     if (!/^https:\/\/[^\s/]+(\/[^\s]*)?$/.test(u)) throw new HttpError(400, 'Launcher URL must be https://');
     out.launcherBaseUrl = u.replace(/\/+$/, '');
   }
+  return out;
+}
+
+export function validateOnline(input: Record<string, unknown>, current: OnlineSettings): OnlineSettings {
+  const out = { ...current };
+  if (input.enabled !== undefined) out.enabled = input.enabled === true;
+  if (input.mode !== undefined) {
+    if (input.mode !== 'quick' && input.mode !== 'named') throw new HttpError(400, 'Mode must be quick or named');
+    out.mode = input.mode;
+  }
+  if (input.namedToken !== undefined) {
+    const t = str(input.namedToken, 'Tunnel token', 4096, false);
+    if (t && !/^[A-Za-z0-9+/=_-]{40,}$/.test(t)) throw new HttpError(400, 'Tunnel token looks invalid; paste the long token from the Cloudflare dashboard');
+    out.namedToken = t;
+  }
+  if (input.publicUrl !== undefined) {
+    const u = str(input.publicUrl, 'Public URL', 200, false).replace(/\/+$/, '');
+    if (u && !/^https:\/\/[a-z0-9.-]+$/i.test(u)) throw new HttpError(400, 'Public URL must look like https://shop.example.com');
+    out.publicUrl = u.toLowerCase();
+  }
+  if (out.enabled && out.mode === 'named' && (!out.namedToken || !out.publicUrl)) throw new HttpError(400, 'A permanent address needs both the tunnel token and its public URL');
   return out;
 }
